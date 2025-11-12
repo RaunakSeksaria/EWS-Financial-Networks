@@ -1,0 +1,30 @@
+{
+  "n_firms": 100,
+  "n_banks": 10,
+  "topology": "barabasi_albert",
+  "seed": 42,
+  "parameters": {
+    "v": 3.0,
+    "delta": 0.02,
+    "a": 1.0,
+    "theta": 0.2,
+    "omega": 0.05,
+    "r_L": 0.05,
+    "r_D": 0.02,
+    "tau_P": 10.0,
+    "P": 1.0,
+    "epsilon_D": 0.1,
+    "D_crit": 0.0,
+    "K_crit": 0.1,
+    "I0": 0.05,
+    "I_alpha": 0.1,
+    "I_beta": 10.0,
+    "I_pi0": 0.05,
+    "tau0": 5.0,
+    "tau_gamma": 2.0,
+    "phi0": 0.1,
+    "lambda_star": 1.0
+  },
+  "n_nodes": 110,
+  "n_edges": 690
+}
