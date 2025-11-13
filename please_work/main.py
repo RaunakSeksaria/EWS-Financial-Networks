@@ -6,7 +6,7 @@ import numpy as np
 import random
 
 # Import from our custom modules
-from config import *
+from config import * # This will now import EARLY_STOPPING_PATIENCE
 from wc_simulation import generate_universes
 from wc_dataset import get_data_loaders
 from wc_model import GIN_GRU_Predictor
@@ -33,6 +33,12 @@ def main():
     train_loader, val_loader, test_loader, test_universes = get_data_loaders(
         universes, BATCH_SIZE, RNG_SEED
     )
+    
+    # --- MODIFICATION: Exit if no data was generated ---
+    if len(train_loader.dataset) == 0:
+        print("No training data was generated. Exiting.")
+        return
+    # --- END MODIFICATION ---
 
     # --- 3. Model Initialization ---
     model = GIN_GRU_Predictor(
@@ -51,13 +57,16 @@ def main():
     # --- 4. Training Loop ---
     train_losses = []
     val_losses = []
+    
     best_val_loss = float('inf')
+    epochs_no_improve = 0
 
-    print(f"Starting training for {NUM_EPOCHS} epochs...")
+    print(f"Starting training for up to {NUM_EPOCHS} epochs (with patience of {EARLY_STOPPING_PATIENCE})...")
     for epoch in range(NUM_EPOCHS):
         model.train()
         epoch_train_loss = 0.0
         
+        # Use tqdm for train_loader
         for batch in tqdm(train_loader, desc=f"Epoch {epoch+1}/{NUM_EPOCHS} [Train]", leave=False):
             graph_batch, labels, batch_info = batch
             graph_batch = graph_batch.to(DEVICE)
@@ -78,7 +87,9 @@ def main():
         model.eval()
         epoch_val_loss = 0.0
         with torch.no_grad():
+            # --- MODIFICATION: Add tqdm to val_loader ---
             for batch in tqdm(val_loader, desc=f"Epoch {epoch+1}/{NUM_EPOCHS} [Val]", leave=False):
+            # --- END MODIFICATION ---
                 graph_batch, labels, batch_info = batch
                 graph_batch = graph_batch.to(DEVICE)
                 labels = labels.to(DEVICE)
@@ -92,10 +103,20 @@ def main():
         
         print(f"Epoch {epoch+1}/{NUM_EPOCHS}, Train Loss: {avg_train_loss:.6f}, Val Loss: {avg_val_loss:.6f}")
         
+        # --- Early Stopping Logic ---
         if avg_val_loss < best_val_loss:
             best_val_loss = avg_val_loss
+            epochs_no_improve = 0
             torch.save(model.state_dict(), "best_model_wc.pth")
-            print("  -> New best model saved.")
+            print(f"  -> New best model saved with Val Loss: {best_val_loss:.6f}")
+        else:
+            epochs_no_improve += 1
+            print(f"  -> No improvement for {epochs_no_improve} epoch(s).")
+        
+        if epochs_no_improve >= EARLY_STOPPING_PATIENCE:
+            print(f"\nEarly stopping triggered after {epoch+1} epochs.")
+            break
+        # --- END NEW ---
 
     print("Training complete.")
     
@@ -103,9 +124,12 @@ def main():
     print("Generating training loss plot...")
     plot_training_loss(train_losses, val_losses)
     
-    # Load best model for final evaluation
-    model.load_state_dict(torch.load("best_model_wc.pth"))
-    
+    print("Loading best model for evaluation...")
+    try:
+        model.load_state_dict(torch.load("best_model_wc.pth"))
+    except FileNotFoundError:
+        print("Error: 'best_model_wc.pth' not found. Evaluation will use the last epoch's model.")
+        
     print("Generating Figure 4(b) reproduction...")
     if test_universes:
         plot_figure_4b(model, test_universes[0], WINDOW_SIZE, DEVICE)

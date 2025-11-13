@@ -4,7 +4,7 @@ import torch
 import pandas as pd
 
 from wc_dataset import create_windows_from_universes, collate_fn_graphs
-from config import EPSILON_MIN, EPSILON_MAX, WINDOW_SIZE
+from config import EPSILON_MIN, EPSILON_MAX, WINDOW_SIZE, DEVICE
 
 def plot_training_loss(train_losses, val_losses):
     """Plots the training and validation loss curves."""
@@ -28,9 +28,12 @@ def plot_figure_4b(model, test_universe, window_size, device):
     states = test_universe['full_states']
     eps_c = test_universe['eps_c']
     eps_values = test_universe['eps_values']
-    mean_activity = np.mean(states, axis=1)
     
-    # 2. Create all windows for this universe
+    # --- MODIFICATION: Get mean_activity for plotting ---
+    mean_activity = np.mean(states, axis=1)
+    # --- END MODIFICATION ---
+    
+    # 2. Create all windows (which will be normalized inside this function)
     windows, eis, labels, _ = create_windows_from_universes([test_universe], window_size)
     if not windows:
         print("Test universe is too short to plot Fig 4(b).")
@@ -41,8 +44,10 @@ def plot_figure_4b(model, test_universe, window_size, device):
     with torch.no_grad():
         for i in range(len(windows)):
             win, ei, lbl = windows[i], eis[i], labels[i]
-            graph_batch, _, batch_info = collate_fn_graphs([(win.unsqueeze(0), ei, lbl)])
-            pred = model(graph_batch.to(device), batch_info)
+            batch = [(win, ei, lbl)]
+            graph_batch, _, batch_info = collate_fn_graphs(batch)
+            
+            pred = model(graph_batch.to(DEVICE), batch_info)
             predictions.append(pred.cpu().item())
             
     predictions = np.array(predictions)
@@ -53,9 +58,16 @@ def plot_figure_4b(model, test_universe, window_size, device):
     
     # 5. Plot
     fig, ax = plt.subplots(figsize=(10, 6))
+    
+    # --- MODIFICATION: Plot the original (non-normalized) mean_activity ---
     ax.plot(eps_values, mean_activity, 'o-', color="tab:blue", label="System", markersize=4)
+    # --- END MODIFICATION ---
+    
     ax.axvline(eps_c, color="gray", linestyle="--", label=f"True $\\epsilon_c$ = {eps_c:.3f}")
+    
+    # --- MODIFICATION: Plot red dots on the original mean_activity trace ---
     ax.scatter(eps_s_values, mean_activity[:len(predictions)], color='red', s=10, zorder=5, label="Prediction Start ($\epsilon_s$)")
+    # --- END MODIFICATION ---
 
     cmap = plt.get_cmap('viridis_r')
     norm = plt.Normalize(vmin=0, vmax=0.1)
@@ -63,7 +75,9 @@ def plot_figure_4b(model, test_universe, window_size, device):
     for i in range(len(predictions)):
         eps_s = eps_s_values[i]
         eps_pred = predictions[i]
+        # --- MODIFICATION: Get activity_s from original mean_activity ---
         activity_s = mean_activity[i]
+        # --- END MODIFICATION ---
         color = cmap(norm(rel_errors[i]))
         ax.plot([eps_s, eps_pred], [activity_s, activity_s], color=color, linestyle="-", linewidth=0.5)
         ax.plot([eps_pred, eps_pred], [activity_s-0.5, activity_s+0.5], color=color, linewidth=0.5)
@@ -110,7 +124,11 @@ def plot_figure_4c(model, test_loader, device):
     bin_centers = (bins[:-1] + bins[1:]) / 2
     
     df = pd.DataFrame({'lead_distance': all_lead_dists_flat, 'rel_error': rel_errors})
-    df['bin'] = pd.cut(df['lead_distance'], bins=bins, labels=bin_centers)
+    # Use pandas .cut and specify bin centers as labels
+    df['bin'] = pd.cut(df['lead_distance'], bins=bins, labels=bin_centers, include_lowest=True)
+    # Convert bin to numeric for grouping
+    df['bin'] = pd.to_numeric(df['bin'])
+    
     df_grouped = df.groupby('bin')['rel_error'].mean().reset_index()
     
     # Plot
@@ -119,7 +137,11 @@ def plot_figure_4c(model, test_loader, device):
     plt.xlabel("Lead Distance")
     plt.ylabel("Mean Relative Error")
     plt.title("Fig 4(c) Reproduction: Mean Relative Error vs. Lead Distance")
-    plt.ylim(min(df_grouped['rel_error']) * 0.8, max(df_grouped['rel_error']) * 1.2)
+    
+    # Set y-lim only if data is valid
+    if not df_grouped.empty:
+        plt.ylim(min(df_grouped['rel_error']) * 0.8, max(df_grouped['rel_error']) * 1.2)
+        
     plt.gca().invert_xaxis()
     plt.grid(True)
     plt.savefig("figure_4c.png")

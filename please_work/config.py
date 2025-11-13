@@ -34,4 +34,5 @@ NUM_GRU_LAYERS = 4
 # --- Training Hyperparameters ---
 BATCH_SIZE = 32
 LEARNING_RATE = 1e-3
-NUM_EPOCHS = 75   # Number of training epochs (use 1000 for full reproduction)
+NUM_EPOCHS = 100   # Max epochs (was 75, increased as recommended)
+EARLY_STOPPING_PATIENCE = 10 # Stop after 10 epochs of no improvement

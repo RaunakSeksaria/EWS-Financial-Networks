@@ -17,12 +17,16 @@ def create_windows_from_universes(universes, window_size):
     all_labels = []
     all_lead_distances = []
 
+    empty_edge_index = torch.empty(2, 0, dtype=torch.long)
+
     for universe in universes:
         states = universe['full_states']
         eps_c = universe['eps_c']
         idx_c = universe['transition_idx']
         eps_values = universe['eps_values']
-        edge_index = universe['edge_index']
+        # --- MODIFICATION: Get the normalization factor ---
+        mean_high_0 = universe['mean_high_0']
+        # --- END MODIFICATION ---
         
         max_start_idx = idx_c - window_size
         if max_start_idx < 0:
@@ -31,11 +35,20 @@ def create_windows_from_universes(universes, window_size):
         for s in range(max_start_idx + 1):
             i = s 
             window_data = states[i : i + window_size]
+            
+            # --- MODIFICATION: Normalize the window data ---
+            if mean_high_0 > 1e-5: # Avoid division by zero
+                window_data_normalized = window_data / mean_high_0
+            else:
+                window_data_normalized = window_data
+            # --- END MODIFICATION ---
+            
             eps_s = eps_values[i] 
             lead_distance = np.abs(eps_s - eps_c)
             
-            all_windows.append(torch.tensor(window_data, dtype=torch.float).unsqueeze(-1))
-            all_edge_indices.append(edge_index)
+            # Use the normalized data
+            all_windows.append(torch.tensor(window_data_normalized, dtype=torch.float).unsqueeze(-1))
+            all_edge_indices.append(empty_edge_index) # Pass the empty index
             all_labels.append(torch.tensor([eps_c], dtype=torch.float))
             all_lead_distances.append(lead_distance)
             
@@ -87,7 +100,8 @@ def collate_fn_graphs(batch):
     graph_batch = Batch.from_data_list(data_list)
     
     batch_size = len(windows)
-    seq_len = windows[0].shape[0]
+    # Handle edge case where batch might be empty
+    seq_len = windows[0].shape[0] if batch_size > 0 else 0
     
     if has_lead_dist:
         return graph_batch, labels_batch, (batch_size, seq_len), torch.tensor(lead_distances)
