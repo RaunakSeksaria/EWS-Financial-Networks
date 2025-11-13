@@ -20,7 +20,7 @@ class LiquidityParams:
         self.c = 0.1                   # cubic saturation
         
         # Coupling
-        self.epsilon = 0.35              # coupling strength (increased for stronger feedback)
+        self.epsilon = 0.3              # coupling strength (increased for stronger feedback)
         
         # Sigmoid thresholds & sharpness
         self.x_L = 0.6                 # lender threshold
@@ -29,18 +29,18 @@ class LiquidityParams:
         self.gamma = 10.0              # risk sigmoid sharpness (sharper transitions)
         
         # Contagion mechanism
-        self.x_critical = 0.65         # critical stress threshold (higher - catches nodes earlier)
+        self.x_critical = 0.85         # critical stress threshold (higher - catches nodes earlier)
         self.contagion_strength = 0.8  # amplification when neighbor is critical (moderate)
         self.mu = 4.0                  # sharpness of contagion trigger
         
         # Control parameter ramp
-        self.kappa0 = 0.0              # initial funding cost
+        self.kappa0 = 0.3              # initial funding cost
         self.eta = 2e-4                # ramp rate (faster for shorter sim)
         
         # Simulation
-        self.T_max = 3000              # total time (reduced)
-        self.sample_points = 150       # number of points to sample
-        self.noise_sd = 5e-4           # dynamical noise (reduced)
+        self.T_max = 1800              # total time (reduced)
+        self.sample_points = 3000       # number of points to sample
+        self.noise_sd = 2e-3           # dynamical noise (reduced)
         
         # Active link threshold
         self.tau_w = 0.15              # threshold for active edges
@@ -60,6 +60,27 @@ def H_lend(x, x_L, lam):
 def R_risk(x, x_R, gamma):
     """Borrower risk: high when x < x_R"""
     return sigmoid(gamma * (x_R - x))
+
+# ============================================================================
+# this is if we were to use Hill functions instead of sigmoids
+# def H_lend(x, x_L, lam):
+    # """
+    # Lender propensity using Hill function: high when x > x_L
+    # Hill activation function: x^n / (K^n + x^n)
+    # lam acts as the Hill coefficient (sharpness)
+    # """
+    # x_pos = np.maximum(x, 1e-10)  # Prevent division by zero
+    # return (x_pos ** lam) / ((x_L ** lam) + (x_pos ** lam))
+# 
+# def R_risk(x, x_R, gamma):
+    # """
+    # Borrower risk using Hill function: high when x < x_R
+    # Hill repression function: K^n / (K^n + x^n)
+    # gamma acts as the Hill coefficient (sharpness)
+    # """
+    # x_pos = np.maximum(x, 1e-10)  # Prevent division by zero
+    # return (x_R ** gamma) / ((x_R ** gamma) + (x_pos ** gamma))
+# ============================================================================
 
 def contagion_multiplier(x, x_crit, mu):
     """
@@ -93,6 +114,7 @@ class LiquidityODE:
         alpha = self.params.alpha0 - kappa
         
         # Local dynamics
+        # dx = alpha - self.params.beta * x - self.params.c * x**3
         dx = alpha - self.params.beta * x - self.params.c * x**3
         
         # Coupling term with contagion (vectorized)
