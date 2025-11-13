@@ -60,6 +60,19 @@ def run_comparison(params, seed=42):
         'A': A_original
     }
     
+    # Scenario 4: Full coupling but NO contagion (contagion_strength = 0)
+    print("Running: Coupling without contagion...")
+    params_nocontagion = LiquidityParams()
+    params_nocontagion.contagion_strength = 0.0
+    ode4 = LiquidityODE(A_original, kappa_func, params_nocontagion)
+    sol4 = solve_ivp(ode4, (0, params.T_max), x0, t_eval=t_eval,
+                     method='RK45', max_step=10.0, rtol=1e-4, atol=1e-6)
+    results['no_contagion'] = {
+        't': sol4.t,
+        'x': sol4.y.T,
+        'A': A_original
+    }
+    
     # Scenario 3: Different network topology
     print("Running: Full coupling with different network...")
     ode3 = LiquidityODE(A_random, kappa_func, params)
@@ -118,13 +131,15 @@ def plot_validation(metrics, save_path='validation.png'):
     colors = {
         'full_original': 'blue',
         'no_coupling': 'red',
-        'full_random': 'green'
+        'full_random': 'green',
+        'no_contagion': 'orange'
     }
     
     labels = {
-        'full_original': 'Full Coupling (Original Net)',
+        'full_original': 'Full Model (Coupling + Contagion)',
         'no_coupling': 'No Coupling (ε=0)',
-        'full_random': 'Full Coupling (Random Net)'
+        'full_random': 'Full Model (Random Net)',
+        'no_contagion': 'Coupling Only (No Contagion)'
     }
     
     # Plot 1: Giant Component
@@ -189,25 +204,32 @@ def plot_validation(metrics, save_path='validation.png'):
 def print_analysis(metrics):
     """Print quantitative analysis"""
     print("\n" + "="*70)
-    print("NETWORK FEEDBACK VALIDATION")
+    print("NETWORK FEEDBACK VALIDATION (WITH CONTAGION)")
     print("="*70)
     
     full_orig = metrics['full_original']
     no_coup = metrics['no_coupling']
     full_rand = metrics['full_random']
+    no_cont = metrics.get('no_contagion')
     
     print("\n1. CRITICAL POINTS:")
-    print(f"   Full coupling (original):  κc = {full_orig['kappa_c']:.4f}")
-    print(f"   No coupling (ε=0):         κc = {no_coup['kappa_c']:.4f}" if no_coup['kappa_c'] else "   No coupling: No transition detected")
-    print(f"   Full coupling (random):    κc = {full_rand['kappa_c']:.4f}")
+    print(f"   Full model (coupling + contagion):  κc = {full_orig['kappa_c']:.4f}")
+    print(f"   No coupling (ε=0):                  κc = {no_coup['kappa_c']:.4f}" if no_coup['kappa_c'] else "   No coupling: No transition detected")
+    if no_cont and no_cont['kappa_c']:
+        print(f"   Coupling only (no contagion):       κc = {no_cont['kappa_c']:.4f}")
+        contagion_effect = abs(full_orig['kappa_c'] - no_cont['kappa_c'])
+        print(f"   → Contagion shifts κc by: {contagion_effect:.4f}")
+    print(f"   Full model (random network):        κc = {full_rand['kappa_c']:.4f}")
     
     kc_diff = abs(full_orig['kappa_c'] - full_rand['kappa_c']) if full_rand['kappa_c'] else 0
-    print(f"\n   → Network topology changes κc by: {kc_diff:.4f}")
+    print(f"   → Network topology changes κc by: {kc_diff:.4f}")
     
     print("\n2. FINAL HETEROGENEITY (std of x at end):")
-    print(f"   Full coupling (original):  σ = {full_orig['std_x'][-1]:.4f}")
+    print(f"   Full model (original):     σ = {full_orig['std_x'][-1]:.4f}")
     print(f"   No coupling (ε=0):         σ = {no_coup['std_x'][-1]:.4f}")
-    print(f"   Full coupling (random):    σ = {full_rand['std_x'][-1]:.4f}")
+    if no_cont:
+        print(f"   No contagion:              σ = {no_cont['std_x'][-1]:.4f}")
+    print(f"   Full model (random):       σ = {full_rand['std_x'][-1]:.4f}")
     
     print("\n3. INTERPRETATION:")
     if kc_diff > 0.02:
@@ -222,23 +244,34 @@ def print_analysis(metrics):
     else:
         print("   ⚠ Coupling may be too weak")
     
+    if no_cont and no_cont['kappa_c']:
+        contagion_effect = abs(full_orig['kappa_c'] - no_cont['kappa_c'])
+        if contagion_effect > 0.02:
+            print("   ✓ CONTAGION mechanism has significant effect")
+            print("   ✓ Cascading failures amplify the transition")
+        else:
+            print("   ⚠ Contagion effect is weak")
+    
     print("\n4. VERDICT:")
     if kc_diff > 0.02 and full_orig['std_x'][-1] > no_coup['std_x'][-1] * 1.2:
         print("   ✅ MODEL IS NON-TRIVIAL - network feedback is real")
+        if no_cont and no_cont['kappa_c'] and abs(full_orig['kappa_c'] - no_cont['kappa_c']) > 0.02:
+            print("   ✅ CONTAGION adds meaningful cascading dynamics")
     else:
-        print("   ⚠️  MODEL MAY BE TOO WEAK - consider increasing ε or sigmoid sharpness")
+        print("   ⚠️  MODEL MAY BE TOO WEAK - consider increasing parameters")
     
     print("="*70)
 
 if __name__ == "__main__":
     print("="*70)
-    print("LIQUIDITY MODEL VALIDATION")
+    print("LIQUIDITY MODEL VALIDATION (WITH CONTAGION)")
     print("Testing if network feedback is non-trivial...")
     print("="*70)
     
     params = LiquidityParams()
     print(f"\nUsing: ε = {params.epsilon}, λ = {params.lam}, γ = {params.gamma}")
-    print("Running 3 scenarios (this may take a moment)...\n")
+    print(f"Contagion: strength = {params.contagion_strength}, x_crit = {params.x_critical}")
+    print("Running 4 scenarios (this may take a moment)...\n")
     
     results, kappa_func, params = run_comparison(params, seed=42)
     metrics = analyze_differences(results, kappa_func, params)

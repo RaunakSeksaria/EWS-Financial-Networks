@@ -20,13 +20,18 @@ class LiquidityParams:
         self.c = 0.1                   # cubic saturation
         
         # Coupling
-        self.epsilon = 0.9             # coupling strength (increased for stronger feedback)
+        self.epsilon = 0.35              # coupling strength (increased for stronger feedback)
         
         # Sigmoid thresholds & sharpness
         self.x_L = 0.6                 # lender threshold
         self.x_R = 0.5                 # risky borrower threshold
         self.lam = 10.0                # lender sigmoid sharpness (sharper transitions)
         self.gamma = 10.0              # risk sigmoid sharpness (sharper transitions)
+        
+        # Contagion mechanism
+        self.x_critical = 0.65         # critical stress threshold (higher - catches nodes earlier)
+        self.contagion_strength = 0.8  # amplification when neighbor is critical (moderate)
+        self.mu = 4.0                  # sharpness of contagion trigger
         
         # Control parameter ramp
         self.kappa0 = 0.0              # initial funding cost
@@ -56,6 +61,13 @@ def R_risk(x, x_R, gamma):
     """Borrower risk: high when x < x_R"""
     return sigmoid(gamma * (x_R - x))
 
+def contagion_multiplier(x, x_crit, mu):
+    """
+    Contagion amplifier: increases sharply when x drops below x_critical
+    Returns multiplier ∈ [1, 1+strength] that amplifies outflows
+    """
+    return sigmoid(mu * (x_crit - x))
+
 # ============================================================================
 # ODE DYNAMICS (VECTORIZED)
 # ============================================================================
@@ -69,7 +81,10 @@ class LiquidityODE:
     def __call__(self, t, x):
         """
         dx_i/dt = alpha(kappa) - beta*x_i - c*x_i^3 
-                  - epsilon * sum_j A_ij * H_lend(x_i) * R_risk(x_j)
+                  - epsilon * sum_j A_ij * H_lend(x_i) * R_risk(x_j) * [1 + contagion]
+        
+        Contagion mechanism: when borrower j is critically stressed (x_j < x_critical),
+        it amplifies the drain on lender i, creating cascading failures.
         """
         # Clip state to prevent runaway
         x = np.clip(x, -2, 3)
@@ -80,13 +95,20 @@ class LiquidityODE:
         # Local dynamics
         dx = alpha - self.params.beta * x - self.params.c * x**3
         
-        # Coupling term (vectorized)
-        H = H_lend(x, self.params.x_L, self.params.lam)  # (N,)
-        R = R_risk(x, self.params.x_R, self.params.gamma)  # (N,)
+        # Coupling term with contagion (vectorized)
+        H = H_lend(x, self.params.x_L, self.params.lam)  # (N,) lender propensity
+        R = R_risk(x, self.params.x_R, self.params.gamma)  # (N,) borrower risk
         
-        # Matrix multiplication: A[i,j] * H[i] * R[j]
-        # For each i: sum_j A[i,j] * R[j], then multiply by H[i]
-        coupling = H * (self.A_sparse @ R)
+        # Contagion multiplier: borrowers below x_critical amplify their impact
+        C = contagion_multiplier(x, self.params.x_critical, self.params.mu)  # (N,)
+        contagion_factor = 1.0 + self.params.contagion_strength * C
+        
+        # Enhanced coupling: R_j * (1 + strength * C_j)
+        R_enhanced = R * contagion_factor
+        
+        # Matrix multiplication: A[i,j] * H[i] * R_enhanced[j]
+        # Node i loses liquidity proportional to stressed neighbors
+        coupling = H * (self.A_sparse @ R_enhanced)
         
         dx -= self.params.epsilon * coupling
         
