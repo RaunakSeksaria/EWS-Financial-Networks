@@ -18,6 +18,8 @@ import numpy as np
 import pandas as pd
 from pathlib import Path
 from typing import Tuple, Optional
+import zipfile
+import io
 
 
 def load_dataset(data_dir: str = 'training_data') -> Tuple[pd.DataFrame, Path]:
@@ -29,11 +31,23 @@ def load_dataset(data_dir: str = 'training_data') -> Tuple[pd.DataFrame, Path]:
     
     Returns:
         metadata: DataFrame with all window metadata
-        windows_path: Path object to windows directory
+        windows_path: Path object to windows directory or zip file
     """
     data_path = Path(data_dir)
     metadata = pd.read_csv(data_path / 'metadata.csv')
-    windows_path = data_path / 'windows'
+    
+    # Check if windows are in a zip file or directory
+    windows_zip = data_path / 'windows.zip'
+    windows_dir = data_path / 'windows'
+    
+    if windows_zip.exists():
+        windows_path = windows_zip
+        print(f"Found windows in zip file: {windows_zip}")
+    elif windows_dir.exists():
+        windows_path = windows_dir
+        print(f"Found windows in directory: {windows_dir}")
+    else:
+        raise FileNotFoundError(f"Neither windows.zip nor windows/ directory found in {data_path}")
     
     print(f"Loaded dataset with {len(metadata)} windows from {len(metadata['sim_id'].unique())} simulations")
     return metadata, windows_path
@@ -49,7 +63,7 @@ def get_window(
     
     Args:
         metadata: metadata DataFrame
-        windows_path: path to windows directory
+        windows_path: path to windows directory or zip file
         idx: row index in metadata
     
     Returns:
@@ -60,9 +74,32 @@ def get_window(
     """
     row = metadata.iloc[idx]
     window_id = row['window_id']
+    filename = f"{window_id}.npz"
     
-    # Load NPZ file
-    data = np.load(windows_path / f"{window_id}.npz")
+    # Ensure windows_path is a Path object
+    if not isinstance(windows_path, Path):
+        windows_path = Path(windows_path)
+    
+    # Check if windows_path is a zip file or directory
+    if windows_path.suffix == '.zip':
+        # Load from zip file
+        with zipfile.ZipFile(windows_path, 'r') as zip_ref:
+            # Try both with and without 'windows/' prefix
+            zip_paths = [filename, f"windows/{filename}"]
+            found_path = None
+            for zip_path in zip_paths:
+                if zip_path in zip_ref.namelist():
+                    found_path = zip_path
+                    break
+            
+            if found_path is None:
+                raise FileNotFoundError(f"Window {filename} not found in {windows_path}. Available: {zip_ref.namelist()[:5]}...")
+            
+            with zip_ref.open(found_path) as f:
+                data = np.load(io.BytesIO(f.read()))
+    else:
+        # Load from directory
+        data = np.load(windows_path / filename)
     
     window_data = data['window_data']
     adjacency = data['adjacency']
@@ -100,7 +137,32 @@ def get_simulation_windows(
     
     for idx, row in sim_windows.iterrows():
         window_id = row['window_id']
-        data = np.load(windows_path / f"{window_id}.npz")
+        filename = f"{window_id}.npz"
+        
+        # Ensure windows_path is a Path object
+        if not isinstance(windows_path, Path):
+            windows_path = Path(windows_path)
+        
+        # Check if windows_path is a zip file or directory
+        if windows_path.suffix == '.zip':
+            # Load from zip file
+            with zipfile.ZipFile(windows_path, 'r') as zip_ref:
+                # Try both with and without 'windows/' prefix
+                zip_paths = [filename, f"windows/{filename}"]
+                found_path = None
+                for zip_path in zip_paths:
+                    if zip_path in zip_ref.namelist():
+                        found_path = zip_path
+                        break
+                
+                if found_path is None:
+                    raise FileNotFoundError(f"Window {filename} not found in {windows_path}")
+                
+                with zip_ref.open(found_path) as f:
+                    data = np.load(io.BytesIO(f.read()))
+        else:
+            # Load from directory
+            data = np.load(windows_path / filename)
         
         window_data_list.append(data['window_data'])
         labels.append(row['kappa_c_label'])

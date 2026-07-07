@@ -23,10 +23,15 @@ from tqdm import tqdm
 import json
 
 # Import from existing model
-import sys
-sys.path.append('.')
+from pathlib import Path
 import importlib.util
-spec = importlib.util.spec_from_file_location("liquid_model", "liquid_model.py")
+
+# Use absolute path based on script location for robustness
+script_dir = Path(__file__).parent
+spec = importlib.util.spec_from_file_location(
+    "liquid_model", 
+    script_dir / "liquid_model.py"
+)
 liquid_model = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(liquid_model)
 
@@ -301,11 +306,16 @@ def extract_windows(
             
             window_data = x_history[window_start:window_end, :]
             
+            # CRITICAL: Ensure window ends before kappa_c (pre-transition data only)
+            window_end_kappa = kappa_vals[window_end - 1]
+            if window_end_kappa >= kappa_c:
+                continue  # Skip windows that extend past critical point
+            
             windows.append({
                 'window_data': window_data,
                 'window_start_idx': window_start,
                 'window_end_idx': window_end,
-                'window_end_kappa': kappa_vals[window_end - 1],
+                'window_end_kappa': window_end_kappa,
                 'lead_fraction': lead_frac,
                 'target_kappa': target_kappa
             })

@@ -3,7 +3,7 @@ Detailed analysis of contagion mechanism effectiveness
 """
 import numpy as np
 import matplotlib.pyplot as plt
-from a import LiquidityParams, LiquidityODE, compute_active_adjacency, giant_component_fraction, contagion_multiplier
+from liquid_model import LiquidityParams, LiquidityODE, compute_active_adjacency, giant_component_fraction, contagion_multiplier
 import networkx as nx
 from scipy.integrate import solve_ivp
 

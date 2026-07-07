@@ -5,7 +5,7 @@ import numpy as np
 import networkx as nx
 import matplotlib.pyplot as plt
 from scipy.integrate import solve_ivp
-from a import LiquidityParams, LiquidityODE, compute_active_adjacency, giant_component_fraction
+from liquid_model import LiquidityParams, LiquidityODE, compute_active_adjacency, giant_component_fraction
 
 def run_comparison(params, seed=42):
     """
