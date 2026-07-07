@@ -1,3 +1,6 @@
 __pycache__/
 venv/
 .venv/
+
+# Unzipped training windows (regenerated from windows.zip / generate_training_data.py)
+liquidity/training_data/windows/
