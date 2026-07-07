@@ -6,7 +6,6 @@ through the real dataset/collate path rather than a live simulation.
 """
 
 import torch
-
 from wc_dataset import GraphWindowDataset, collate_fn_graphs
 from wc_model import GIN_GRU_Predictor
 

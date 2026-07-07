@@ -36,11 +36,15 @@ torch = [{ index = "pytorch-cpu" }]
 
 [tool.ruff]
 line-length = 100
-extend-exclude = ["final-results"]
+extend-exclude = ["final-results", "*.ipynb"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "UP"]
 ignore = ["E501"]
+
+[tool.ruff.lint.per-file-ignores]
+# main.py pulls hyperparameters via `from config import *`
+"wilson_cowan/main.py" = ["F403", "F405"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

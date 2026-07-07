@@ -70,7 +70,9 @@ def generate_universe_data(N, K, T, w, epsilon_start=0.1, epsilon_end=0.9, epsil
     intra_corrs = (torch.rand(K, device=device) * 0.5) + 0.5
 
     all_time_series_data = []
-    epsilon_steps = torch.arange(epsilon_start, epsilon_end + epsilon_step, epsilon_step, device=device)
+    epsilon_steps = torch.arange(
+        epsilon_start, epsilon_end + epsilon_step, epsilon_step, device=device
+    )
     epsilon_c = None
 
     for epsilon_val in epsilon_steps:
