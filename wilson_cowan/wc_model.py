@@ -69,7 +69,7 @@ class GIN_GRU_Predictor(nn.Module):
         # --- GRU Processing ---
         gru_output, hn = self.gru(x_seq)
         
-        # --- MODIFICATION: Use the LAST sequence output ---
+        # Use the last sequence output
         # This state summarizes the entire sequence.
         last_gru_output = gru_output[:, -1, :] 
         

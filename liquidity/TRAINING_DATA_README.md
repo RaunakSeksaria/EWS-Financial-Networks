@@ -13,7 +13,7 @@ The pipeline generates supervised learning datasets where:
 
 ### Core Scripts
 
-1. **`liquid-model.py`** - Base ODE simulator for liquidity fragmentation dynamics
+1. **`liquid_model.py`** - Base ODE simulator for liquidity fragmentation dynamics
 2. **`generate_training_data.py`** - Main data generation pipeline
 3. **`load_dataset.py`** - Utilities for loading and inspecting generated data
 
@@ -225,15 +225,4 @@ Vary local parameters (α₀, β, c) per node instead of globally.
 - **Storage**: ~1.4 MB metadata CSV + ~200 MB windows for 100 simulations
 - Each window NPZ: ~40-160 KB depending on network size
 
-## Future Enhancements
-
-1. **Parallelization**: Use multiprocessing to generate simulations in parallel
-2. **Noise variations**: Add observational noise and dynamical shocks
-3. **Heterogeneity**: Per-node parameter variations
-4. **Alternative networks**: Core-periphery, small-world, community structure
-5. **Temporal resolution**: Vary sampling cadence across simulations
-6. **Label noise**: Intentionally perturb some labels to test robustness
-
-## Citation
-
-Based on liquidity fragmentation model from `liquid-model.py`. See model documentation for ODE dynamics and phase transition details.
+The underlying ODE dynamics and phase transition are documented in `liquid_model.py`.

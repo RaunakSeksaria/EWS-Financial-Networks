@@ -68,9 +68,8 @@ def run_single_universe(sim_rng: np.random.Generator) -> dict:
     x_low_0 = relax_to_steady_state(0.0, x_init_low, W_sparse)
     x_high_0 = relax_to_steady_state(0.0, x_init_high, W_sparse)
     
-    # --- MODIFICATION: Store the initial mean activity ---
+    # Store the initial mean activity
     mean_high_0 = np.mean(x_high_0)
-    # --- END MODIFICATION ---
 
     if np.mean(x_low_0) > (mean_high_0 - 1.0):
         return None 

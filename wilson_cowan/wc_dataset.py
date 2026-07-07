@@ -24,9 +24,8 @@ def create_windows_from_universes(universes, window_size):
         eps_c = universe['eps_c']
         idx_c = universe['transition_idx']
         eps_values = universe['eps_values']
-        # --- MODIFICATION: Get the normalization factor ---
+        # Normalization factor from the pre-transition segment
         mean_high_0 = universe['mean_high_0']
-        # --- END MODIFICATION ---
         
         max_start_idx = idx_c - window_size
         if max_start_idx < 0:
@@ -36,12 +35,11 @@ def create_windows_from_universes(universes, window_size):
             i = s 
             window_data = states[i : i + window_size]
             
-            # --- MODIFICATION: Normalize the window data ---
+            # Normalize the window data
             if mean_high_0 > 1e-5: # Avoid division by zero
                 window_data_normalized = window_data / mean_high_0
             else:
                 window_data_normalized = window_data
-            # --- END MODIFICATION ---
             
             eps_s = eps_values[i] 
             lead_distance = np.abs(eps_s - eps_c)

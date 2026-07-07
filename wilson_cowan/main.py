@@ -34,11 +34,9 @@ def main():
         universes, BATCH_SIZE, RNG_SEED
     )
     
-    # --- MODIFICATION: Exit if no data was generated ---
     if len(train_loader.dataset) == 0:
         print("No training data was generated. Exiting.")
         return
-    # --- END MODIFICATION ---
 
     # --- 3. Model Initialization ---
     model = GIN_GRU_Predictor(
@@ -87,9 +85,7 @@ def main():
         model.eval()
         epoch_val_loss = 0.0
         with torch.no_grad():
-            # --- MODIFICATION: Add tqdm to val_loader ---
             for batch in tqdm(val_loader, desc=f"Epoch {epoch+1}/{NUM_EPOCHS} [Val]", leave=False):
-            # --- END MODIFICATION ---
                 graph_batch, labels, batch_info = batch
                 graph_batch = graph_batch.to(DEVICE)
                 labels = labels.to(DEVICE)

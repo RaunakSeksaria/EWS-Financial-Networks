@@ -1,65 +1,77 @@
-# Project Plan: A Deep-Learning "Fragility Index" for Financial Markets
+# Early Warning Signals for Critical Transitions in Financial Networks
 
-**Project Objective:** To implement the deep-learning framework from Liu et al. (2024) [cite_start][cite: 3] to predict critical transitions in financial networks. We will first generate a massive synthetic dataset of financial markets, each with a known "brittleness" tipping point. We will then train a GIN-GRU model to predict this point from pre-transition time-series data. Finally, we will apply this trained model to real S&P 500 data to generate a novel "Systemic Fragility Index" and test its ability to provide early warnings for the 2008 financial crisis.
+Networked dynamical systems — markets, interbank lending networks, neuronal populations — can undergo *critical transitions*: a control parameter drifts past a tipping point and the system collapses abruptly. This project implements the deep-learning framework of [Liu et al., *Phys. Rev. X* **14**, 031009 (2024)](https://doi.org/10.1103/PhysRevX.14.031009) and applies it to financial-network models: a **GIN-GRU regressor** that reads a short window of pre-transition node time series and predicts *where the tipping point is* — before the system gets there.
 
----
+## Method
 
-## Phase 1: Synthetic Data Generation (The "Training Universe")
+Every experiment follows the same recipe:
 
-**Goal:** Create a massive and diverse dataset of synthetic financial markets, each with a precisely known critical transition "label" ($\epsilon_c$).
+1. **Simulate** an ensemble of networked systems ("universes"), ramping a control parameter until each undergoes a critical transition. The transition value (ε_c or κ_c) is recorded as the regression label.
+2. **Window** the pre-transition time series into sliding windows of `w = 20` timesteps × N nodes. Every window inherits its universe's label — so the model must infer the tipping point from dynamics observed well before it.
+3. **Train** a graph-temporal regressor: **GIN** layers encode each timestep's network state → global pooling produces a per-timestep graph embedding → a **GRU** reads the embedding sequence → an MLP head regresses the predicted tipping point. Loss is MSE against the true transition value.
 
-### 1.1. The Synthetic System
-Our "toy" universe will consist of simulated stock markets.
-* **Nodes:** `N` stocks, where `N` is randomly chosen for each simulation (e.g., between 50 and 200).
-* **Structure:** The `N` stocks are grouped into `K` random clusters (e.g., "Tech," "Finance," "Health").
-* **Control Parameter ($\epsilon$):** We define $\epsilon$ as the **"inter-cluster correlation."** This is our "fragility" knob.
-    * When $\epsilon$ is low (e.g., 0.1), the market is healthy and diversified. "Tech" and "Finance" stocks move independently.
-    * When $\epsilon$ is high (e.g., 0.9), the market is brittle and fragile. All stocks move together.
+The trained model generalizes across network sizes, topologies, and dynamics parameters it never saw, because it learns the *dynamical signatures* of an approaching transition rather than any particular network.
 
-### 1.2. The Simulation & Labeling Process
-For each *single* simulation in our dataset:
-1.  **Generate Data:** We loop $\epsilon$ from 0.1 to 0.9. At each step, we generate `T=100` time steps of synthetic stock *returns* for all `N` stocks using a multivariate normal distribution defined by our correlation matrix.
-2.  **Find the "Tipping Point" ($\epsilon_c$):** After the simulation, we analyze the data to find the *true* critical transition. We define this as the **value of $\epsilon$ where the largest eigenvalue ($\lambda_{max}$) of the correlation matrix begins to spike.** This $\lambda_{max}$ represents the "market mode" (how much the entire market moves as one), and its sudden growth is a classic sign of a critical transition. [cite_start]This $\epsilon_c$ is our quantitative **label**[cite: 56].
-3.  **Create Training Samples:** We go back to the time-series data generated *before* the system reached $\epsilon_c$. [cite_start]We use a **sliding window** (e.g., `w=20` time steps, as in the paper [cite: 61, 203]) to create many `(N_stocks, w_timesteps)` samples.
-4.  [cite_start]**Assign Label:** *Every single sample* generated from this one simulation gets the **exact same label**: the $\epsilon_c$ we found in Step 2[cite: 81].
-5.  [cite_start]**Repeat:** We run this entire process 1,000+ times, each time with a different `N`, `K`, and resulting $\epsilon_c$, to build a "massive and diverse dataset"[cite: 91].
+## The three systems
 
----
+### 1. Wilson-Cowan neuronal dynamics — [`wilson_cowan/`](wilson_cowan/)
 
-## Phase 2: Model Architecture & Training
+A reproduction of the PRX paper's core result. Ensembles of Erdős–Rényi networks with Wilson-Cowan firing-rate dynamics are swept over coupling ε; the model predicts the critical ε_c from pre-transition activity windows.
 
-[cite_start]**Goal:** Implement the GIN-GRU architecture [cite: 43] to learn the relationship between a pre-transition time series (`X_s`) and its ultimate tipping point (`\epsilon_c`).
+| Predictions along one trajectory | Predicted vs. true ε_c (test set) |
+|---|---|
+| ![Figure 4b reproduction](wilson_cowan/figure_4b.png) | ![Figure 4c reproduction](wilson_cowan/figure_4c.png) |
 
-### 2.1. The GIN-GRU Architecture
-Our model will be a regressor that outputs a single number.
-1.  **Input:** A single training sample `X_s` with shape `(N, w)`. `N` is the number of stocks, `w` is the window length (e.g., 20).
-2.  **GIN (Graph Isomorphism Network) Layers:** At each time step `t` (from 1 to `w`), the GIN layers process the *spatial* snapshot of `N` stock returns. [cite_start]This part acts as a "graph encoder" that learns the collective state of the system *at that instant*[cite: 44].
-3.  [cite_start]**Global Max Pooling (GMPool):** After the GIN, a pooling operation "flattens" the `N` node representations into a single graph-level embedding `h_t` for that time step[cite: 84].
-4.  **GRU (Gated Recurrent Unit) Layer:** The *sequence* of graph embeddings `[h_1, h_2, ..., h_w]` is fed into the GRU. [cite_start]This part of the model reads the *temporal* patterns, learning how the network's collective state evolves as it approaches the transition[cite: 45].
-5.  [cite_start]**MLP (Multilayer Perceptron) Head:** The final output vector from the GRU is passed to a simple MLP that regresses it down to a **single output number**: our predicted tipping point, $\tilde{\epsilon}_c$[cite: 85, 107].
+Run it: `cd wilson_cowan && uv run python main.py` (edit `G` in `config.py` — 100 for a quick run, 1000 for the full reproduction). `wilson_cowan_clean.ipynb` is a self-contained notebook version with parameter studies over network size, degree, and dynamics constants.
 
-### 2.2. Training
-* **Task:** Train the model on the thousands of `(X_s, \epsilon_c)` pairs from Phase 1.
-* [cite_start]**Loss Function:** We use the **Mean Square Error (MSE)**[cite: 108]. [cite_start]The model is directly penalized for the squared difference between its prediction $\tilde{\epsilon}_c$ and the true label $\epsilon_c$[cite: 109].
+### 2. Interbank liquidity fragmentation — [`liquidity/`](liquidity/)
 
----
+An original ODE model of an interbank lending network: node liquidity evolves under local dynamics plus lending/contagion coupling, while funding cost κ ramps up. Past a critical κ_c, the network of active lending links fragments — the giant component collapses:
 
-## Phase 3: Real-World Application & Analysis
+![Liquidity fragmentation phase transition](liquidity/transition.png)
 
-**Goal:** Use our *trained* model as a "measurement instrument" to see if it can detect the build-up of risk for the 2008 financial crisis.
+`generate_training_data.py` builds a supervised dataset across topologies (Erdős–Rényi sparse/dense, scale-free), network sizes, and dynamics parameters, with windows extracted at multiple lead distances from the transition; `train_model.ipynb` trains the GIN-GRU predictor on it. Validation sweeps and contagion analysis:
 
-### 3.1. Data Sourcing & Preparation
-1.  **Stock Data:** We will download daily "Adjusted Close" prices for all S&P 500 companies from **2005-2010** using the `yfinance` Python library. This data is publicly and freely available.
-2.  **Validation Data:** We will also download the daily prices for the **CBOE Volatility Index (VIX)** (ticker: `^VIX`) from the same source. The VIX is our benchmark for *contemporaneous* market panic.
+![Model validation](liquidity/validation.png)
 
-### 3.2. Generating the "Systemic Fragility Index" (SFI)
-This is the core test of our project.
-1.  **Create Input Stream:** We create a **rolling window** over our real S&P 500 data. On any given day `D` (e.g., June 1, 2007), we take the last `w=20` days of stock *returns* for all 500 companies. This creates a real-world tensor of shape `(500, 20)`.
-2.  **Make Prediction:** We feed this *single* real-world tensor into our *trained model* from Phase 2. The model (which has *only* ever seen synthetic data) will output a single number, $\tilde{\epsilon}_c$.
-3.  **Plot the Index:** We record this output number for day `D`. We then slide our window forward one day to `D+1` and repeat the process. The resulting time series of $\tilde{\epsilon}_c$ values is our **"Systemic Fragility Index."**
+Dataset format and generation options are documented in [`liquidity/TRAINING_DATA_README.md`](liquidity/TRAINING_DATA_README.md). A pre-generated dataset (`training_data/`, ~5,000 windows from 100 simulations) ships with the repo.
 
-### 3.3. Analysis & Conclusion
-Our final deliverable will be a chart comparing our index to the VIX.
-* **The "A-ha!" Plot:** We will plot our SFI against the VIX from 2005-2010.
-* **Hypothesis:** The VIX is known to spike *during* a crisis (e.g., late 2008). Our SFI is designed to be an *early warning signal*.
-* **Success Criterion:** The project is a success if our SFI shows a clear, sustained, and significant upward trend starting in **2007**, demonstrating that the model "saw" the market's underlying fragility building up *well before* the VIX spiked and the market collapsed.
+### 3. Synthetic correlated market — [`training_data.py`](training_data.py) + [`market_model.ipynb`](market_model.ipynb)
+
+A stylized equity market: N stocks in K sectors, with inter-sector correlation ε as the fragility knob. As ε rises, diversification vanishes and the market approaches a regime where the correlation structure degenerates (loss of positive-definiteness — all stocks move as one). The model predicts the critical ε_c from windows of simulated returns.
+
+### Supporting material
+
+- [`goodwin/`](goodwin/) — an exploratory Goodwin-style macroeconomic network (`simulator.py`: bank/firm nodes with loans, deposits, and default contagion) with generated simulation runs.
+- [`docs/toy_model_spec.md`](docs/toy_model_spec.md) + [`paper.ipynb`](paper.ipynb) / [`plot.ipynb`](plot.ipynb) — a minimal toy model of firm-network tipping (logistic dynamics with coupling on a Barabási–Albert graph) with Jacobian-eigenvalue stability analysis, used to build intuition for the full systems.
+- [`final-results/DPCN_Project.pdf`](final-results/DPCN_Project.pdf) — the full project write-up.
+
+## Quickstart
+
+Requires [uv](https://docs.astral.sh/uv/). Python 3.12 and all dependencies (CPU-only PyTorch by default) are pinned and locked:
+
+```bash
+uv sync                                  # create environment from uv.lock
+
+uv run pytest                            # smoke tests
+uv run python training_data.py          # 10-universe market-model smoke run
+cd wilson_cowan && uv run python main.py # full Wilson-Cowan pipeline
+```
+
+Training runs on CPU; CUDA is used automatically when a GPU build of PyTorch is installed.
+
+## Repository layout
+
+```
+wilson_cowan/        Wilson-Cowan pipeline (modular: config, simulation, dataset, model, plots)
+liquidity/           liquidity-fragmentation model, dataset generator, training notebook
+goodwin/             Goodwin-style macro network simulator
+training_data.py     synthetic-market universe generator
+market_model.ipynb   end-to-end market-model notebook (data → training → evaluation)
+docs/                toy-model specification
+tests/               fast CPU smoke tests
+```
+
+## Reference
+
+Liu, Z., et al. *Early Predictor for the Onset of Critical Transitions in Networked Dynamical Systems.* Physical Review X 14, 031009 (2024). [doi:10.1103/PhysRevX.14.031009](https://doi.org/10.1103/PhysRevX.14.031009)
